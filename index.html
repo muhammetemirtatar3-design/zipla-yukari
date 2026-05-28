@@ -51,7 +51,7 @@
     Yükseklik: <span id="score">0</span>
     &nbsp;|&nbsp; En iyi: <span id="best">0</span>
   </div>
-  <div id="help">Turuncu: kırılır | Siyah: tuzak | Mor uçan: çarpma</div>
+  <div id="help">Turuncu: kırılır | Siyah: tuzak | Mor: tehlike | Altın: +100</div>
   <canvas id="game"></canvas>
   <script>
     const canvas = document.getElementById('game');
@@ -471,21 +471,40 @@
       }
     }
 
-    function createHazard() {
+    function flyerScreenOffset() {
+      return Math.random() < 0.75
+        ? -110 - Math.random() * 80
+        : -30 + Math.random() * 70;
+    }
+
+    function createEnemyFlyer() {
       const fromLeft = Math.random() < 0.5;
-      // Topun oynadığı bölge: biraz üstünden hafif altına (ekran koordinatı)
-      const screenOffset =
-        Math.random() < 0.75
-          ? -110 - Math.random() * 80
-          : -30 + Math.random() * 70;
+      const offset = flyerScreenOffset();
       return {
+        kind: 'enemy',
         x: fromLeft ? -24 : W + 24,
-        y: ball.y + screenOffset,
-        baseY: ball.y + screenOffset,
+        y: ball.y + offset,
+        baseY: ball.y + offset,
         vx: fromLeft ? 2.8 : -2.8,
         radius: 15,
         wingPhase: Math.random() * Math.PI * 2,
         bobPhase: Math.random() * Math.PI * 2,
+      };
+    }
+
+    function createBoostFlyer() {
+      const fromLeft = Math.random() < 0.5;
+      const offset = -90 - Math.random() * 70;
+      return {
+        kind: 'boost',
+        x: fromLeft ? -24 : W + 24,
+        y: ball.y + offset,
+        baseY: ball.y + offset,
+        vx: fromLeft ? 2.3 : -2.3,
+        radius: 16,
+        wingPhase: Math.random() * Math.PI * 2,
+        bobPhase: Math.random() * Math.PI * 2,
+        spin: Math.random() * Math.PI * 2,
       };
     }
 
@@ -498,7 +517,26 @@
       if (Math.random() > 0.62) return;
 
       lastHazardSpawnAt = height;
-      hazards.push(createHazard());
+      if (Math.random() < 0.3) {
+        hazards.push(createBoostFlyer());
+      } else {
+        hazards.push(createEnemyFlyer());
+      }
+    }
+
+    function applyScoreBoost(amount) {
+      cameraY -= amount * 10;
+      ball.y = worldY(H * 0.4);
+      ball.vy = JUMP_FORCE - jumpBoost - 1.5;
+      const height = Math.floor(-cameraY / 10);
+      const gain = height - maxHeight;
+      maxHeight = height;
+      scoreEl.textContent = maxHeight;
+      addFloatText(ball.x, screenY(ball.y) - 28, `+${amount}!`);
+      if (gain > amount) addFloatText(ball.x, screenY(ball.y) - 48, `+${gain}`);
+      squash = 1;
+      screenShake = 4;
+      generateMorePlatforms();
     }
 
     function updateHazards(dt) {
@@ -507,6 +545,7 @@
         h.wingPhase += 0.14 * dt;
         h.bobPhase += 0.1 * dt;
         h.y = h.baseY + Math.sin(h.bobPhase) * 18;
+        if (h.kind === 'boost') h.spin += 0.08 * dt;
       }
       hazards = hazards.filter((h) => {
         const sy = screenY(h.y);
@@ -516,21 +555,55 @@
 
     function checkHazardCollision() {
       const ballSy = screenY(ball.y);
-      for (const h of hazards) {
+      for (let i = hazards.length - 1; i >= 0; i--) {
+        const h = hazards[i];
         const hy = screenY(h.y);
         const dist = Math.hypot(ball.x - h.x, ballSy - hy);
-        if (dist < ball.radius + h.radius) {
-          screenShake = 14;
-          deathReason = 'hazard';
-          triggerGameOver();
-          return true;
+        if (dist >= ball.radius + h.radius) continue;
+
+        if (h.kind === 'boost') {
+          applyScoreBoost(100);
+          hazards.splice(i, 1);
+          return false;
         }
+
+        screenShake = 14;
+        deathReason = 'hazard';
+        triggerGameOver();
+        return true;
       }
       return false;
     }
 
-    function drawHazard(h) {
-      const sy = screenY(h.y);
+    function drawBoostFlyer(h, sy) {
+      ctx.save();
+      ctx.translate(h.x, sy);
+      ctx.rotate(h.spin);
+      ctx.fillStyle = 'rgba(255, 214, 102, 0.45)';
+      ctx.beginPath();
+      ctx.arc(0, 0, h.radius + 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fdcb6e';
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = (i * Math.PI * 2) / 5 - Math.PI / 2;
+        const x = Math.cos(a) * h.radius;
+        const y = Math.sin(a) * h.radius;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        const a2 = a + Math.PI / 5;
+        ctx.lineTo(Math.cos(a2) * (h.radius * 0.45), Math.sin(a2) * (h.radius * 0.45));
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f39c12';
+      ctx.font = 'bold 9px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('+100', 0, 3);
+      ctx.restore();
+    }
+
+    function drawEnemyFlyer(h, sy) {
       const wing = Math.sin(h.wingPhase) * 5;
 
       ctx.fillStyle = 'rgba(108, 92, 231, 0.35)';
@@ -563,6 +636,12 @@
       ctx.moveTo(h.x + 7, sy + 4);
       ctx.lineTo(h.x + 2, sy + 6);
       ctx.stroke();
+    }
+
+    function drawHazard(h) {
+      const sy = screenY(h.y);
+      if (h.kind === 'boost') drawBoostFlyer(h, sy);
+      else drawEnemyFlyer(h, sy);
     }
 
     function generateMorePlatforms() {
