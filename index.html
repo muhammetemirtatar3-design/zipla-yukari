@@ -76,6 +76,7 @@
     const BALL_RADIUS = 14;
 
     const keys = { left: false, right: false };
+    let touchDragging = false;
     let gameState = 'playing';
     let countdownEnd = 0;
     let bestScore = parseInt(localStorage.getItem('bestScore') || '0', 10);
@@ -665,8 +666,23 @@
       return screenY + cameraY;
     }
 
+    function canvasXFromClient(clientX) {
+      const rect = canvas.getBoundingClientRect();
+      return ((clientX - rect.left) / rect.width) * W;
+    }
+
+    function moveBallToTouchX(clientX) {
+      const newX = Math.max(
+        ball.radius,
+        Math.min(W - ball.radius, canvasXFromClient(clientX))
+      );
+      ball.vx = newX - ball.x;
+      ball.x = newX;
+    }
+
     function handleInput(dt) {
       if (gameState !== 'playing') return;
+      if (touchDragging) return;
       const target = keys.left ? -MOVE_SPEED : keys.right ? MOVE_SPEED : 0;
       if (target !== 0) {
         ball.vx += (target - ball.vx) * Math.min(ACCEL * dt, 1);
@@ -781,6 +797,7 @@
       ball.y = H - 120;
       ball.vx = 0;
       ball.vy = JUMP_FORCE * 0.5;
+      touchDragging = false;
       initPlatforms();
       initBackground();
       scoreEl.textContent = '0';
@@ -920,26 +937,35 @@
       if (gameState === 'gameover') startGame();
     }
 
-    function handleTouch(e) {
+    function handleTouchStart(e) {
       unlockAudio();
       if (gameState === 'gameover') {
         trySkipCountdown();
         return;
       }
       e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
+      const t = e.touches[0];
+      if (!t) return;
+      touchDragging = true;
       keys.left = false;
       keys.right = false;
-      for (let i = 0; i < e.touches.length; i++) {
-        const x = ((e.touches[i].clientX - rect.left) / rect.width) * W;
-        if (x < W / 2) keys.left = true;
-        else keys.right = true;
-      }
+      moveBallToTouchX(t.clientX);
     }
 
-    function clearTouch() {
-      keys.left = false;
-      keys.right = false;
+    function handleTouchMove(e) {
+      if (!touchDragging || gameState !== 'playing') return;
+      e.preventDefault();
+      const t = e.touches[0];
+      if (!t) return;
+      moveBallToTouchX(t.clientX);
+    }
+
+    function handleTouchEnd(e) {
+      if (e.touches.length > 0) {
+        moveBallToTouchX(e.touches[0].clientX);
+        return;
+      }
+      touchDragging = false;
     }
 
     document.addEventListener('keydown', (e) => {
@@ -957,10 +983,10 @@
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
     });
 
-    canvas.addEventListener('touchstart', handleTouch, { passive: false });
-    canvas.addEventListener('touchmove', handleTouch, { passive: false });
-    canvas.addEventListener('touchend', clearTouch);
-    canvas.addEventListener('touchcancel', clearTouch);
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
     canvas.addEventListener('click', () => {
       unlockAudio();
       trySkipCountdown();
