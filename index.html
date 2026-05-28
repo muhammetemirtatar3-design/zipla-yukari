@@ -86,10 +86,13 @@
     let audioCtx = null;
     const TRAP_CHANCE = 0.12;
     const FRAGILE_CHANCE = 0.26;
+    const MOVING_SCORE_MIN = 750;
+    const MOVING_PLATFORM_CHANCE = 0.62;
     let deathReason = 'fall';
     const TARGET_FRAME_MS = 1000 / 60;
     let lastFrameTime = 0;
     let jumpBoost = 0;
+    let movingPlatformsUnlocked = false;
 
     const ball = {
       x: W / 2,
@@ -209,9 +212,71 @@
       return 'normal';
     }
 
+    function getScore() {
+      return Math.floor(-cameraY / 10);
+    }
+
+    function randomPlatformX(width) {
+      const margin = 8;
+      const score = getScore();
+      if (score < MOVING_SCORE_MIN) {
+        return margin + Math.random() * (W - width - margin * 2);
+      }
+      const r = Math.random();
+      const zone = W * 0.38;
+      if (r < 0.4) return margin + Math.random() * (zone - width);
+      if (r < 0.8) return W - zone + Math.random() * (zone - width - margin);
+      return W * 0.22 + Math.random() * (W * 0.56 - width);
+    }
+
+    function applyMovingPlatform(p, chance = MOVING_PLATFORM_CHANCE) {
+      if (getScore() < MOVING_SCORE_MIN) return p;
+      if (p.type === 'trap' || p.dead) return p;
+      if (!p.moving && Math.random() < chance) {
+        p.moving = true;
+        p.vx = (Math.random() < 0.5 ? -1 : 1) * (2.4 + Math.random() * 2.6);
+      }
+      return p;
+    }
+
     function createPlatform(x, y, width = 70, type) {
       const platformType = type ?? rollPlatformType();
-      return { x, y, width, height: 12, flash: 0, type: platformType, dead: false };
+      const p = {
+        x,
+        y,
+        width,
+        height: 12,
+        flash: 0,
+        type: platformType,
+        dead: false,
+        moving: false,
+        vx: 0,
+      };
+      return applyMovingPlatform(p);
+    }
+
+    function unlockMovingPlatforms() {
+      if (movingPlatformsUnlocked || maxHeight < MOVING_SCORE_MIN) return;
+      movingPlatformsUnlocked = true;
+      for (const p of platforms) {
+        applyMovingPlatform(p, 0.35);
+      }
+    }
+
+    function updateMovingPlatforms(dt) {
+      if (getScore() < MOVING_SCORE_MIN) return;
+      for (const p of platforms) {
+        if (!p.moving || !p.vx) continue;
+        p.x += p.vx * dt;
+        if (p.x < 0) {
+          p.x = 0;
+          p.vx = Math.abs(p.vx);
+        }
+        if (p.x + p.width > W) {
+          p.x = W - p.width;
+          p.vx = -Math.abs(p.vx);
+        }
+      }
     }
 
     function spawnBreakParticles(platform) {
@@ -300,12 +365,19 @@
         ctx.fillText('✕', p.x + p.width / 2, py + p.height - 1);
         ctx.textAlign = 'left';
       } else {
-        ctx.fillStyle = '#4ecca3';
+        ctx.fillStyle = p.moving ? '#45b7c4' : '#4ecca3';
         ctx.beginPath();
         ctx.roundRect(p.x, py, p.width, p.height, 4);
         ctx.fill();
-        ctx.fillStyle = '#3db892';
+        ctx.fillStyle = p.moving ? '#2d8f9a' : '#3db892';
         ctx.fillRect(p.x, py + p.height - 3, p.width, 3);
+        if (p.moving) {
+          ctx.fillStyle = 'rgba(255,255,255,0.75)';
+          ctx.font = 'bold 10px system-ui';
+          ctx.textAlign = 'center';
+          ctx.fillText('← →', p.x + p.width / 2, py + p.height - 2);
+          ctx.textAlign = 'left';
+        }
       }
     }
 
@@ -371,6 +443,7 @@
         pt.life -= 0.04 * dt;
       }
       particles = particles.filter((pt) => pt.life > 0);
+      updateMovingPlatforms(dt);
     }
 
     function initPlatforms() {
@@ -381,8 +454,8 @@
       let y = H - 40;
       for (let i = 0; i < 25; i++) {
         y -= nextPlatformGap();
-        const x = 40 + Math.random() * (W - 120);
         const width = 55 + Math.random() * 45;
+        const x = randomPlatformX(width);
         const type = i < 8 ? 'normal' : undefined;
         platforms.push(createPlatform(x, y, width, type));
       }
@@ -492,9 +565,8 @@
       while (topY > targetY && guard++ < 40) {
         const lastY = platforms[platforms.length - 1].y;
         const newY = lastY - nextPlatformGap();
-        platforms.push(
-          createPlatform(30 + Math.random() * (W - 100), newY, 50 + Math.random() * 50)
-        );
+        const width = 50 + Math.random() * 50;
+        platforms.push(createPlatform(randomPlatformX(width), newY, width));
         topY = newY;
         if (platforms.length > 80) platforms.shift();
       }
@@ -581,6 +653,7 @@
         addFloatText(ball.x, screenY(ball.y) - 20, `+${gain}`);
       }
       scoreEl.textContent = maxHeight;
+      unlockMovingPlatforms();
 
       generateMorePlatforms();
       trySpawnHazard();
@@ -610,6 +683,7 @@
       lastFrameTime = 0;
       jumpBoost = 0;
       deathReason = 'fall';
+      movingPlatformsUnlocked = false;
       cameraY = 0;
       maxHeight = 0;
       squash = 0;
