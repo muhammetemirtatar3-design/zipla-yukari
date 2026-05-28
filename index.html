@@ -51,7 +51,7 @@
     Yükseklik: <span id="score">0</span>
     &nbsp;|&nbsp; En iyi: <span id="best">0</span>
   </div>
-  <div id="help">← → veya A D — turuncu basamak tek zıplamalık</div>
+  <div id="help">Turuncu: tek kullanım | Kırmızı-siyah: tuzak</div>
   <canvas id="game"></canvas>
   <script>
     const canvas = document.getElementById('game');
@@ -84,7 +84,9 @@
     let floatTexts = [];
     let particles = [];
     let audioCtx = null;
-    const FRAGILE_CHANCE = 0.28;
+    const TRAP_CHANCE = 0.12;
+    const FRAGILE_CHANCE = 0.26;
+    let deathReason = 'fall';
     const TARGET_FRAME_MS = 1000 / 60;
     let lastFrameTime = 0;
     let jumpBoost = 0;
@@ -198,9 +200,15 @@
       ctx.fillRect(0, 0, W, H);
     }
 
+    function rollPlatformType() {
+      const r = Math.random();
+      if (r < TRAP_CHANCE) return 'trap';
+      if (r < TRAP_CHANCE + FRAGILE_CHANCE) return 'fragile';
+      return 'normal';
+    }
+
     function createPlatform(x, y, width = 70, type) {
-      const platformType =
-        type ?? (Math.random() < FRAGILE_CHANCE ? 'fragile' : 'normal');
+      const platformType = type ?? rollPlatformType();
       return { x, y, width, height: 12, flash: 0, type: platformType, dead: false };
     }
 
@@ -217,8 +225,24 @@
       }
     }
 
+    function drawTrapSpikes(x, py, width, height) {
+      ctx.fillStyle = '#d63031';
+      const spikeW = 8;
+      const count = Math.floor(width / spikeW);
+      for (let i = 0; i < count; i++) {
+        const sx = x + i * spikeW + spikeW / 2;
+        ctx.beginPath();
+        ctx.moveTo(sx - 4, py);
+        ctx.lineTo(sx, py - 5);
+        ctx.lineTo(sx + 4, py);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
     function drawPlatform(p, py) {
       const isFragile = p.type === 'fragile';
+      const isTrap = p.type === 'trap';
 
       if (p.flash > 0.05) {
         ctx.fillStyle = `rgba(255, 255, 180, ${p.flash * 0.7})`;
@@ -256,6 +280,22 @@
         ctx.font = 'bold 11px system-ui';
         ctx.textAlign = 'center';
         ctx.fillText('!', p.x + p.width / 2, py + p.height - 2);
+        ctx.textAlign = 'left';
+      } else if (isTrap) {
+        ctx.fillStyle = '#2d3436';
+        ctx.beginPath();
+        ctx.roundRect(p.x, py, p.width, p.height, 4);
+        ctx.fill();
+        ctx.fillStyle = '#636e72';
+        ctx.fillRect(p.x, py + p.height - 4, p.width, 4);
+        drawTrapSpikes(p.x, py, p.width, p.height);
+        ctx.strokeStyle = '#d63031';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(p.x + 1, py + 1, p.width - 2, p.height - 2);
+        ctx.fillStyle = '#ff7675';
+        ctx.font = 'bold 13px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('✕', p.x + p.width / 2, py + p.height - 1);
         ctx.textAlign = 'left';
       } else {
         ctx.fillStyle = '#4ecca3';
@@ -341,7 +381,7 @@
         y -= nextPlatformGap();
         const x = 40 + Math.random() * (W - 120);
         const width = 55 + Math.random() * 45;
-        const type = i < 5 ? 'normal' : undefined;
+        const type = i < 8 ? 'normal' : undefined;
         platforms.push(createPlatform(x, y, width, type));
       }
     }
@@ -403,6 +443,13 @@
             ballBottom >= py &&
             ballTop < py + p.height
           ) {
+            if (p.type === 'trap') {
+              p.flash = 1;
+              screenShake = 14;
+              deathReason = 'trap';
+              triggerGameOver();
+              return;
+            }
             ball.y = worldY(py - ball.radius);
             ball.vy = JUMP_FORCE - jumpBoost;
             jumpBoost = Math.min(jumpBoost + JUMP_BOOST_STEP, JUMP_BOOST_MAX);
@@ -444,8 +491,9 @@
       }
     }
 
-    function triggerGameOver() {
+    function triggerGameOver(reason) {
       if (gameState !== 'playing') return;
+      if (reason) deathReason = reason;
       if (maxHeight > bestScore) {
         bestScore = maxHeight;
         localStorage.setItem('bestScore', String(bestScore));
@@ -459,6 +507,7 @@
       gameState = 'playing';
       lastFrameTime = 0;
       jumpBoost = 0;
+      deathReason = 'fall';
       cameraY = 0;
       maxHeight = 0;
       squash = 0;
@@ -542,7 +591,13 @@
         ctx.textAlign = 'center';
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 32px system-ui';
-        ctx.fillText('Düştün!', W / 2, H / 2 - 55);
+        ctx.fillText(deathReason === 'trap' ? 'Tuzak!' : 'Düştün!', W / 2, H / 2 - 55);
+        if (deathReason === 'trap') {
+          ctx.font = '15px system-ui';
+          ctx.fillStyle = '#ff7675';
+          ctx.fillText('Tuzaklı basamağa bastın', W / 2, H / 2 - 28);
+          ctx.fillStyle = '#fff';
+        }
         ctx.font = '20px system-ui';
         ctx.fillText(`Skorun: ${maxHeight}`, W / 2, H / 2 - 10);
         ctx.fillText(`En iyi: ${bestScore}`, W / 2, H / 2 + 25);
