@@ -492,16 +492,13 @@
     function trySpawnHazard() {
       const height = Math.max(0, -cameraY);
       if (height < 350) return;
+      if (hazards.length > 0) return;
       const gap = 380 + Math.random() * 280;
       if (height - lastHazardSpawnAt < gap) return;
       if (Math.random() > 0.62) return;
-      if (hazards.length >= 4) return;
 
       lastHazardSpawnAt = height;
       hazards.push(createHazard());
-      if (Math.random() < 0.35 && hazards.length < 4) {
-        hazards.push(createHazard());
-      }
     }
 
     function updateHazards(dt) {
