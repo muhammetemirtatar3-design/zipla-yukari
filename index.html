@@ -51,7 +51,7 @@
     Yükseklik: <span id="score">0</span>
     &nbsp;|&nbsp; En iyi: <span id="best">0</span>
   </div>
-  <div id="help">Turuncu: tek kullanım | Kırmızı-siyah: tuzak</div>
+  <div id="help">Turuncu: kırılır | Siyah: tuzak | Mor uçan: çarpma</div>
   <canvas id="game"></canvas>
   <script>
     const canvas = document.getElementById('game');
@@ -102,6 +102,8 @@
     let cameraY = 0;
     let maxHeight = 0;
     let platforms = [];
+    let hazards = [];
+    let lastHazardSpawnAt = 0;
     let clouds = [];
     let stars = [];
 
@@ -386,6 +388,91 @@
       }
     }
 
+    function createHazard() {
+      const fromLeft = Math.random() < 0.5;
+      return {
+        x: fromLeft ? -24 : W + 24,
+        y: cameraY + 100 + Math.random() * (H - 200),
+        vx: fromLeft ? 2.4 : -2.4,
+        radius: 15,
+        wingPhase: Math.random() * Math.PI * 2,
+      };
+    }
+
+    function trySpawnHazard() {
+      const height = Math.max(0, -cameraY);
+      if (height < 400) return;
+      const gap = 650 + Math.random() * 400;
+      if (height - lastHazardSpawnAt < gap) return;
+      if (Math.random() > 0.45) return;
+      if (hazards.length >= 2) return;
+
+      lastHazardSpawnAt = height;
+      hazards.push(createHazard());
+    }
+
+    function updateHazards(dt) {
+      for (const h of hazards) {
+        h.x += h.vx * dt;
+        h.wingPhase += 0.14 * dt;
+      }
+      hazards = hazards.filter((h) => {
+        const sy = screenY(h.y);
+        return h.x > -50 && h.x < W + 50 && sy > -60 && sy < H + 60;
+      });
+    }
+
+    function checkHazardCollision() {
+      const ballSy = screenY(ball.y);
+      for (const h of hazards) {
+        const hy = screenY(h.y);
+        const dist = Math.hypot(ball.x - h.x, ballSy - hy);
+        if (dist < ball.radius + h.radius) {
+          screenShake = 14;
+          deathReason = 'hazard';
+          triggerGameOver();
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function drawHazard(h) {
+      const sy = screenY(h.y);
+      const wing = Math.sin(h.wingPhase) * 5;
+
+      ctx.fillStyle = 'rgba(108, 92, 231, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(h.x, sy, h.radius + 4, h.radius + 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#5f27cd';
+      ctx.beginPath();
+      ctx.ellipse(h.x, sy, h.radius, h.radius * 0.72, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#a29bfe';
+      ctx.beginPath();
+      ctx.ellipse(h.x - 13, sy - 1, 11, 5 + wing * 0.3, -0.5, 0, Math.PI * 2);
+      ctx.ellipse(h.x + 13, sy - 1, 11, 5 + wing * 0.3, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#d63031';
+      ctx.beginPath();
+      ctx.arc(h.x - 5, sy - 3, 2.5, 0, Math.PI * 2);
+      ctx.arc(h.x + 5, sy - 3, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(h.x - 7, sy + 4);
+      ctx.lineTo(h.x - 2, sy + 6);
+      ctx.moveTo(h.x + 7, sy + 4);
+      ctx.lineTo(h.x + 2, sy + 6);
+      ctx.stroke();
+    }
+
     function generateMorePlatforms() {
       const targetY = cameraY - H - 200;
       let topY = Math.min(...platforms.map((p) => p.y));
@@ -484,6 +571,9 @@
       scoreEl.textContent = maxHeight;
 
       generateMorePlatforms();
+      trySpawnHazard();
+      updateHazards(dt);
+      if (checkHazardCollision()) return;
 
       // Düşme = oyun bitti
       if (screenY(ball.y) > H + 80) {
@@ -514,6 +604,8 @@
       screenShake = 0;
       floatTexts = [];
       particles = [];
+      hazards = [];
+      lastHazardSpawnAt = 0;
       ball.x = W / 2;
       ball.y = H - 120;
       ball.vx = 0;
@@ -539,6 +631,11 @@
         const py = screenY(p.y);
         if (py < -30 || py > H + 30) continue;
         drawPlatform(p, py);
+      }
+
+      // Uçan tehlikeler
+      for (const h of hazards) {
+        drawHazard(h);
       }
 
       // Kırılan parçacıklar
@@ -591,11 +688,17 @@
         ctx.textAlign = 'center';
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 32px system-ui';
-        ctx.fillText(deathReason === 'trap' ? 'Tuzak!' : 'Düştün!', W / 2, H / 2 - 55);
-        if (deathReason === 'trap') {
+        const titles = { trap: 'Tuzak!', hazard: 'Çarptın!', fall: 'Düştün!' };
+        const subs = {
+          trap: 'Tuzaklı basamağa bastın',
+          hazard: 'Uçan nesneye çarptın',
+          fall: '',
+        };
+        ctx.fillText(titles[deathReason] || 'Düştün!', W / 2, H / 2 - 55);
+        if (subs[deathReason]) {
           ctx.font = '15px system-ui';
-          ctx.fillStyle = '#ff7675';
-          ctx.fillText('Tuzaklı basamağa bastın', W / 2, H / 2 - 28);
+          ctx.fillStyle = deathReason === 'hazard' ? '#a29bfe' : '#ff7675';
+          ctx.fillText(subs[deathReason], W / 2, H / 2 - 28);
           ctx.fillStyle = '#fff';
         }
         ctx.font = '20px system-ui';
