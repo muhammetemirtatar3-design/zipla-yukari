@@ -19,6 +19,11 @@
       display: block;
       border-radius: 8px;
       box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+      touch-action: none;
+      -webkit-touch-callout: none;
+      user-select: none;
+      max-width: 100vw;
+      max-height: 100dvh;
     }
     #ui {
       position: fixed;
@@ -78,6 +83,8 @@
     let particles = [];
     let audioCtx = null;
     const FRAGILE_CHANCE = 0.28;
+    const TARGET_FRAME_MS = 1000 / 60;
+    let lastFrameTime = 0;
 
     const ball = {
       x: W / 2,
@@ -293,23 +300,30 @@
       floatTexts.push({ x, y, text, life: 1 });
     }
 
-    function updateEffects() {
-      squash *= 0.82;
-      screenShake *= 0.8;
+    function getDeltaTime(timestamp) {
+      if (!lastFrameTime) lastFrameTime = timestamp;
+      const dt = Math.min((timestamp - lastFrameTime) / TARGET_FRAME_MS, 2.5);
+      lastFrameTime = timestamp;
+      return dt;
+    }
+
+    function updateEffects(dt) {
+      squash *= Math.pow(0.82, dt);
+      screenShake *= Math.pow(0.8, dt);
       for (const p of platforms) {
-        if (p.flash > 0) p.flash *= 0.88;
+        if (p.flash > 0) p.flash *= Math.pow(0.88, dt);
       }
       for (const ft of floatTexts) {
-        ft.y -= 1.5;
-        ft.life -= 0.025;
+        ft.y -= 1.5 * dt;
+        ft.life -= 0.025 * dt;
       }
       floatTexts = floatTexts.filter((ft) => ft.life > 0);
       platforms = platforms.filter((p) => !p.dead);
       for (const pt of particles) {
-        pt.x += pt.vx;
-        pt.y += pt.vy;
-        pt.vy += 0.15;
-        pt.life -= 0.04;
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+        pt.vy += 0.15 * dt;
+        pt.life -= 0.04 * dt;
       }
       particles = particles.filter((pt) => pt.life > 0);
     }
@@ -352,20 +366,20 @@
       return screenY + cameraY;
     }
 
-    function handleInput() {
+    function handleInput(dt) {
       if (gameState !== 'playing') return;
       const target = keys.left ? -MOVE_SPEED : keys.right ? MOVE_SPEED : 0;
       if (target !== 0) {
-        ball.vx += (target - ball.vx) * ACCEL;
+        ball.vx += (target - ball.vx) * Math.min(ACCEL * dt, 1);
       } else {
-        ball.vx *= FRICTION;
+        ball.vx *= Math.pow(FRICTION, dt);
       }
     }
 
-    function updateBall() {
-      ball.vy += GRAVITY;
-      ball.x += ball.vx;
-      ball.y += ball.vy;
+    function updateBall(dt) {
+      ball.vy += GRAVITY * dt;
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
 
       // Ekran kenarlarından geçiş
       if (ball.x < -ball.radius) ball.x = W + ball.radius;
@@ -377,7 +391,7 @@
           const py = screenY(p.y);
           const ballBottom = screenY(ball.y) + ball.radius;
           const ballTop = screenY(ball.y) - ball.radius;
-          const prevBottom = ballBottom - ball.vy;
+          const prevBottom = ballBottom - ball.vy * dt;
 
           if (
             ball.x + ball.radius > p.x &&
@@ -439,6 +453,7 @@
 
     function startGame() {
       gameState = 'playing';
+      lastFrameTime = 0;
       cameraY = 0;
       maxHeight = 0;
       squash = 0;
@@ -538,19 +553,33 @@
       }
     }
 
-    function gameLoop() {
+    function gameLoop(timestamp) {
+      const dt = getDeltaTime(timestamp);
       if (gameState === 'playing') {
-        handleInput();
-        updateBall();
-        updateEffects();
+        handleInput(dt);
+        updateBall(dt);
+        updateEffects(dt);
       } else if (gameState === 'gameover') {
-        updateEffects();
+        updateEffects(dt);
         if (performance.now() >= countdownEnd) {
           startGame();
         }
       }
       draw();
       requestAnimationFrame(gameLoop);
+    }
+
+    function resizeCanvas() {
+      const aspect = W / H;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      if (vw / vh > aspect) {
+        canvas.style.height = '100dvh';
+        canvas.style.width = 'auto';
+      } else {
+        canvas.style.width = '100vw';
+        canvas.style.height = 'auto';
+      }
     }
 
     function trySkipCountdown() {
@@ -607,7 +636,9 @@
     initPlatforms();
     initBackground();
     ball.vy = JUMP_FORCE * 0.6;
-    gameLoop();
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    requestAnimationFrame(gameLoop);
   </script>
 </body>
 </html>
