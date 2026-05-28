@@ -529,11 +529,9 @@
       ball.y = worldY(H * 0.4);
       ball.vy = JUMP_FORCE - jumpBoost - 1.5;
       const height = Math.floor(-cameraY / 10);
-      const gain = height - maxHeight;
-      maxHeight = height;
+      maxHeight = Math.max(maxHeight, height);
       scoreEl.textContent = maxHeight;
       addFloatText(ball.x, screenY(ball.y) - 28, `+${amount}!`);
-      if (gain > amount) addFloatText(ball.x, screenY(ball.y) - 48, `+${gain}`);
       squash = 1;
       screenShake = 4;
       generateMorePlatforms();
