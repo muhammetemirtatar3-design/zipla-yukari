@@ -205,9 +205,19 @@
       ctx.fillRect(0, 0, W, H);
     }
 
+    function countTrailingTraps() {
+      let count = 0;
+      for (let i = platforms.length - 1; i >= 0; i--) {
+        if (platforms[i].type === 'trap') count++;
+        else break;
+      }
+      return count;
+    }
+
     function rollPlatformType() {
       const r = Math.random();
-      if (r < TRAP_CHANCE) return 'trap';
+      const canPlaceTrap = countTrailingTraps() < 2;
+      if (canPlaceTrap && r < TRAP_CHANCE) return 'trap';
       if (r < TRAP_CHANCE + FRAGILE_CHANCE) return 'fragile';
       return 'normal';
     }
