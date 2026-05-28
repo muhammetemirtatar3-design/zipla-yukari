@@ -88,6 +88,7 @@
     const FRAGILE_CHANCE = 0.26;
     const MOVING_SCORE_MIN = 500;
     const MOVING_PLATFORM_CHANCE = 0.62;
+    const BOOST_FLYER_CHANCE = 0.42;
     let deathReason = 'fall';
     const TARGET_FRAME_MS = 1000 / 60;
     let lastFrameTime = 0;
@@ -512,12 +513,12 @@
       const height = Math.max(0, -cameraY);
       if (height < 350) return;
       if (hazards.length > 0) return;
-      const gap = 380 + Math.random() * 280;
+      const gap = 340 + Math.random() * 260;
       if (height - lastHazardSpawnAt < gap) return;
-      if (Math.random() > 0.62) return;
+      if (Math.random() > 0.58) return;
 
       lastHazardSpawnAt = height;
-      if (Math.random() < 0.3) {
+      if (Math.random() < BOOST_FLYER_CHANCE) {
         hazards.push(createBoostFlyer());
       } else {
         hazards.push(createEnemyFlyer());
