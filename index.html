@@ -65,10 +65,12 @@
     canvas.height = H;
 
     const GRAVITY = 0.16;
-    const JUMP_FORCE = -6.5;
+    const JUMP_FORCE = -6.8;
+    const JUMP_BOOST_STEP = 0.14;
+    const JUMP_BOOST_MAX = 2.2;
     const PLATFORM_GAP_MIN = 48;
     const PLATFORM_GAP_MAX = 78;
-    const MOVE_SPEED = 2.5;
+    const MOVE_SPEED = 3.1;
     const ACCEL = 0.14;
     const FRICTION = 0.88;
     const BALL_RADIUS = 14;
@@ -85,6 +87,7 @@
     const FRAGILE_CHANCE = 0.28;
     const TARGET_FRAME_MS = 1000 / 60;
     let lastFrameTime = 0;
+    let jumpBoost = 0;
 
     const ball = {
       x: W / 2,
@@ -401,7 +404,8 @@
             ballTop < py + p.height
           ) {
             ball.y = worldY(py - ball.radius);
-            ball.vy = JUMP_FORCE;
+            ball.vy = JUMP_FORCE - jumpBoost;
+            jumpBoost = Math.min(jumpBoost + JUMP_BOOST_STEP, JUMP_BOOST_MAX);
             squash = 1;
             screenShake = 5;
             p.flash = 1;
@@ -454,6 +458,7 @@
     function startGame() {
       gameState = 'playing';
       lastFrameTime = 0;
+      jumpBoost = 0;
       cameraY = 0;
       maxHeight = 0;
       squash = 0;
