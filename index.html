@@ -390,12 +390,19 @@
 
     function createHazard() {
       const fromLeft = Math.random() < 0.5;
+      // Topun oynadığı bölge: biraz üstünden hafif altına (ekran koordinatı)
+      const screenOffset =
+        Math.random() < 0.75
+          ? -110 - Math.random() * 80
+          : -30 + Math.random() * 70;
       return {
         x: fromLeft ? -24 : W + 24,
-        y: cameraY + 100 + Math.random() * (H - 200),
-        vx: fromLeft ? 2.4 : -2.4,
+        y: ball.y + screenOffset,
+        baseY: ball.y + screenOffset,
+        vx: fromLeft ? 2.8 : -2.8,
         radius: 15,
         wingPhase: Math.random() * Math.PI * 2,
+        bobPhase: Math.random() * Math.PI * 2,
       };
     }
 
@@ -415,10 +422,12 @@
       for (const h of hazards) {
         h.x += h.vx * dt;
         h.wingPhase += 0.14 * dt;
+        h.bobPhase += 0.1 * dt;
+        h.y = h.baseY + Math.sin(h.bobPhase) * 18;
       }
       hazards = hazards.filter((h) => {
         const sy = screenY(h.y);
-        return h.x > -50 && h.x < W + 50 && sy > -60 && sy < H + 60;
+        return h.x > -50 && h.x < W + 50 && sy > -80 && sy < H + 50;
       });
     }
 
